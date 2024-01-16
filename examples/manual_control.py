@@ -65,6 +65,8 @@ from __future__ import print_function
 import glob
 import os
 import sys
+import cv2
+import numpy as np
 
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
@@ -1185,6 +1187,20 @@ class CameraManager(object):
     def render(self, display):
         if self.surface is not None:
             display.blit(self.surface, (0, 0))
+    
+    def render_opencv(self, display):
+        if self.surface is not None:
+            # Convert the Pygame surface to a NumPy array
+            frame = pygame.surfarray.array3d(self.surface)
+            # Pygame uses (width, height), while OpenCV uses (height, width)
+            frame = frame.swapaxes(0, 1)
+            
+            # Convert the image from RGB to BGR
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            
+            # Display the image using OpenCV
+            cv2.imshow('Camera View', frame)
+            cv2.waitKey(1)
 
     @staticmethod
     def _parse_image(weak_self, image):
@@ -1229,6 +1245,18 @@ class CameraManager(object):
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
+    
+    def show_opencv(self):
+        if self.surface is not None:
+            # Convert Pygame surface to OpenCV format
+            image_data = pygame.surfarray.array3d(self.surface)
+            image_data = np.swapaxes(image_data, 0, 1)
+            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+
+            # Display the image using OpenCV
+            cv2.imshow('Camera View', image_data)
+            cv2.waitKey(1)
+    
 
 
 # ==============================================================================
@@ -1265,7 +1293,7 @@ def game_loop(args):
         display = pygame.display.set_mode(
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF)
-        display.fill((0,0,0))
+        display.fill((0, 0, 0))
         pygame.display.flip()
 
         hud = HUD(args.width, args.height)
@@ -1282,14 +1310,22 @@ def game_loop(args):
             if args.sync:
                 sim_world.tick()
             clock.tick_busy_loop(60)
+
+            # Ensure world.player is not None before creating CameraManager
+            if world.player is not None:
+                if not hasattr(world, 'camera_manager'):
+                    world.camera_manager = CameraManager(world.player, hud, args.gamma)
+            else:
+                raise ValueError("world.player is None. Cannot create CameraManager.")
+
             if controller.parse_events(client, world, clock, args.sync):
                 return
             world.tick(clock)
             world.render(display)
+            world.camera_manager.show_opencv()
             pygame.display.flip()
 
     finally:
-
         if original_settings:
             sim_world.apply_settings(original_settings)
 
@@ -1300,6 +1336,8 @@ def game_loop(args):
             world.destroy()
 
         pygame.quit()
+
+
 
 
 # ==============================================================================
