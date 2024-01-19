@@ -61,6 +61,7 @@ from __future__ import print_function
 # -- find carla module ---------------------------------------------------------
 # ==============================================================================
 
+
 import glob
 import os
 import sys
@@ -1096,11 +1097,18 @@ class CameraManager(object):
 
         if not self._parent.type_id.startswith("walker.pedestrian"):
             self._camera_transforms = [
-                (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.0*bound_y, z=2.0*bound_z), carla.Rotation(pitch=8.0)), Attachment.SpringArmGhost),
                 (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
-                (carla.Transform(carla.Location(x=+1.9*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost),
-                (carla.Transform(carla.Location(x=-2.8*bound_x, y=+0.0*bound_y, z=4.6*bound_z), carla.Rotation(pitch=6.0)), Attachment.SpringArmGhost),
-                (carla.Transform(carla.Location(x=-1.0, y=-1.0*bound_y, z=0.4*bound_z)), Attachment.Rigid)]
+                (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                (carla.Transform(carla.Location(x=-2.0*bound_x, y=-0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                (carla.Transform(carla.Location(x=-1.0*bound_x, y=+0.0*bound_y, z=1.3*bound_z), carla.Rotation(yaw=180)), Attachment.Rigid)
+                #(carla.Transform(carla.Location(x=+0.5*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost)
+                # (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                # (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.0*bound_y, z=2.0*bound_z), carla.Rotation(pitch=8.0)), Attachment.SpringArmGhost),
+                # (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                # (carla.Transform(carla.Location(x=+1.9*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost),
+                # (carla.Transform(carla.Location(x=-2.8*bound_x, y=+0.0*bound_y, z=4.6*bound_z), carla.Rotation(pitch=6.0)), Attachment.SpringArmGhost),
+                # (carla.Transform(carla.Location(x=-1.0, y=-1.0*bound_y, z=0.4*bound_z)), Attachment.Rigid)
+                ]
         else:
             self._camera_transforms = [
                 (carla.Transform(carla.Location(x=-2.5, z=0.0), carla.Rotation(pitch=-8.0)), Attachment.SpringArmGhost),
@@ -1198,7 +1206,8 @@ class CameraManager(object):
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             
             # Display the image using OpenCV
-            cv2.imshow('Camera View', frame)
+
+            #cv2.imshow('Camera View', frame)
             cv2.waitKey(1)
 
     @staticmethod
@@ -1253,7 +1262,7 @@ class CameraManager(object):
             image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
 
             # Display the image using OpenCV
-            cv2.imshow('Camera View', image_data)
+            #cv2.imshow('Camera View', image_data)
             cv2.waitKey(1)
     
 
@@ -1270,7 +1279,7 @@ def game_loop(args):
     original_settings = None
 
     try:
-        client = carla.Client(args.host, args.port)
+        client = carla.Client("127.0.0.1", args.port)
         client.set_timeout(2000.0)
 
         sim_world = client.get_world()
