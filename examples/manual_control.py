@@ -240,8 +240,8 @@ class World(object):
         ]
 
     def restart(self):
-        self.player_max_speed = 1.589
-        self.player_max_speed_fast = 3.713
+        self.player_max_speed = 1.000
+        self.player_max_speed_fast = 2.000
         # Keep same camera config if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
@@ -1100,7 +1100,10 @@ class CameraManager(object):
                 (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
                 (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
                 (carla.Transform(carla.Location(x=-2.0*bound_x, y=-0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
-                (carla.Transform(carla.Location(x=-1.0*bound_x, y=+0.0*bound_y, z=1.3*bound_z), carla.Rotation(yaw=180)), Attachment.Rigid)
+                (carla.Transform(carla.Location(x=-1.0*bound_x, y=+0.0*bound_y, z=1.3*bound_z), carla.Rotation(yaw=180)), Attachment.Rigid),
+                (carla.Transform(carla.Location(x=+0.0*bound_x, y=+0.0*bound_y, z=8.0*bound_z), carla.Rotation(pitch=270.0)),Attachment.Rigid)
+
+
                 #(carla.Transform(carla.Location(x=+0.5*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost)
                 # (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
                 # (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.0*bound_y, z=2.0*bound_z), carla.Rotation(pitch=8.0)), Attachment.SpringArmGhost),
@@ -1116,6 +1119,8 @@ class CameraManager(object):
                 (carla.Transform(carla.Location(x=2.5, y=0.5, z=0.0), carla.Rotation(pitch=-8.0)), Attachment.SpringArmGhost),
                 (carla.Transform(carla.Location(x=-4.0, z=2.0), carla.Rotation(pitch=6.0)), Attachment.SpringArmGhost),
                 (carla.Transform(carla.Location(x=0, y=-2.5, z=-0.0), carla.Rotation(yaw=90.0)), Attachment.Rigid)]
+
+    
 
         self.transform_index = 1
         self.sensors = [
@@ -1207,7 +1212,7 @@ class CameraManager(object):
             
             # Display the image using OpenCV
 
-            #cv2.imshow('Camera View', frame)
+            cv2.imshow('Camera View', frame)
             cv2.waitKey(1)
 
     @staticmethod
@@ -1251,7 +1256,7 @@ class CameraManager(object):
             array = array[:, :, :3]
             array = array[:, :, ::-1]
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
-        if self.recording:
+        if self.recording and image.frame % 50 == 0:
             image.save_to_disk('_out/%08d' % image.frame)
     
     def show_opencv(self):
@@ -1262,7 +1267,7 @@ class CameraManager(object):
             image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
 
             # Display the image using OpenCV
-            #cv2.imshow('Camera View', image_data)
+            cv2.imshow('Camera View', image_data)
             cv2.waitKey(1)
     
 
