@@ -241,8 +241,8 @@ class World(object):
         ]
 
     def restart(self):
-        self.player_max_speed = 1.000
-        self.player_max_speed_fast = 2.000
+        self.player_max_speed = 0.500
+        self.player_max_speed_fast = 1.000
         # Keep same camera config if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
@@ -364,6 +364,7 @@ class World(object):
             self.toggle_radar()
         sensors = [
             self.camera_manager.sensor,
+            self.camera_manager2.sensor,
             self.collision_sensor.sensor,
             self.lane_invasion_sensor.sensor,
             self.gnss_sensor.sensor,
@@ -395,7 +396,7 @@ class KeyboardControl(object):
     def __init__(self, world, start_in_autopilot):
         self._autopilot_enabled = start_in_autopilot
         self._ackermann_enabled = False
-        self._ackermann_reverse = 1
+        self._ackermann_reverse = 0.5
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
             self._ackermann_control = carla.VehicleAckermannControl()
@@ -442,7 +443,7 @@ class KeyboardControl(object):
                 elif event.key == K_TAB:
                     world_index = (world.camera_manager.transform_index + 1) % len(world.camera_manager._camera_transforms)
                     world.camera_manager.toggle_camera(world_index)
-                    world.camera_manager2.toggle_camera()
+                    world.camera_manager2.toggle_camera(0)
                 elif event.key == K_c and pygame.key.get_mods() & KMOD_SHIFT:
                     world.next_weather(reverse=True)
                 elif event.key == K_c:
@@ -1339,6 +1340,7 @@ def game_loop(args):
             if world.player is not None:
                 if not hasattr(world, 'camera_manager'):
                     world.camera_manager = CameraManager(world.player, hud, args.gamma)
+                    world.camera_manager2 = CameraManager(world.player, hud, args.gamma)
             else:
                 raise ValueError("world.player is None. Cannot create CameraManager.")
 
