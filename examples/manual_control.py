@@ -212,6 +212,7 @@ class World(object):
         self.imu_sensor = None
         self.radar_sensor = None
         self.camera_manager = None
+        self.camera_manager2 = None
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
         self._actor_filter = args.filter
@@ -294,6 +295,9 @@ class World(object):
         self.camera_manager = CameraManager(self.player, self.hud, self._gamma)
         self.camera_manager.transform_index = cam_pos_index
         self.camera_manager.set_sensor(cam_index, notify=False)
+        self.camera_manager2 = CameraManager(self.player, self.hud, self._gamma)
+        self.camera_manager2.transform_index = cam_pos_index
+        self.camera_manager2.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
 
@@ -351,6 +355,9 @@ class World(object):
         self.camera_manager.sensor.destroy()
         self.camera_manager.sensor = None
         self.camera_manager.index = None
+        self.camera_manager2.sensor.destroy()
+        self.camera_manager2.sensor = None
+        self.camera_manager2.index = None
 
     def destroy(self):
         if self.radar_sensor is not None:
@@ -367,6 +374,15 @@ class World(object):
                 sensor.destroy()
         if self.player is not None:
             self.player.destroy()
+    def show_opencv(self):
+        if self.camera_manager2.surface is not None:
+            # Convert Pygame surface to OpenCV format
+            image_data = pygame.surfarray.array3d(self.camera_manager2.surface)
+            image_data = np.swapaxes(image_data, 0, 1)
+            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+            # Display the image using OpenCV
+            cv2.imshow('Camera View', image_data)
+            cv2.waitKey(1)
 
 
 # ==============================================================================
@@ -424,7 +440,9 @@ class KeyboardControl(object):
                 elif event.key == K_h or (event.key == K_SLASH and pygame.key.get_mods() & KMOD_SHIFT):
                     world.hud.help.toggle()
                 elif event.key == K_TAB:
-                    world.camera_manager.toggle_camera()
+                    world_index = (world.camera_manager.transform_index + 1) % len(world.camera_manager._camera_transforms)
+                    world.camera_manager.toggle_camera(world_index)
+                    world.camera_manager2.toggle_camera()
                 elif event.key == K_c and pygame.key.get_mods() & KMOD_SHIFT:
                     world.next_weather(reverse=True)
                 elif event.key == K_c:
@@ -1107,7 +1125,7 @@ class CameraManager(object):
                 #(carla.Transform(carla.Location(x=+0.5*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost)
                 # (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
                 # (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.0*bound_y, z=2.0*bound_z), carla.Rotation(pitch=8.0)), Attachment.SpringArmGhost),
-                # (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                # (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*boudexnd_z)), Attachment.Rigid),
                 # (carla.Transform(carla.Location(x=+1.9*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost),
                 # (carla.Transform(carla.Location(x=-2.8*bound_x, y=+0.0*bound_y, z=4.6*bound_z), carla.Rotation(pitch=6.0)), Attachment.SpringArmGhost),
                 # (carla.Transform(carla.Location(x=-1.0, y=-1.0*bound_y, z=0.4*bound_z)), Attachment.Rigid)
@@ -1164,8 +1182,8 @@ class CameraManager(object):
             item.append(bp)
         self.index = None
 
-    def toggle_camera(self):
-        self.transform_index = (self.transform_index + 1) % len(self._camera_transforms)
+    def toggle_camera(self,toggle_index):
+        self.transform_index = toggle_index
         self.set_sensor(self.index, notify=False, force_respawn=True)
 
     def set_sensor(self, index, notify=True, force_respawn=False):
@@ -1258,17 +1276,10 @@ class CameraManager(object):
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self.recording and image.frame % 50 == 0:
             image.save_to_disk('_out/%08d' % image.frame)
-    
-    def show_opencv(self):
-        if self.surface is not None:
-            # Convert Pygame surface to OpenCV format
-            image_data = pygame.surfarray.array3d(self.surface)
-            image_data = np.swapaxes(image_data, 0, 1)
-            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+    '''
 
-            # Display the image using OpenCV
-            cv2.imshow('Camera View', image_data)
-            cv2.waitKey(1)
+    '''
+    
     
 
 
@@ -1335,7 +1346,7 @@ def game_loop(args):
                 return
             world.tick(clock)
             world.render(display)
-            world.camera_manager.show_opencv()
+            world.show_opencv()
             pygame.display.flip()
 
     finally:
