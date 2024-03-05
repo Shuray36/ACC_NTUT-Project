@@ -214,7 +214,7 @@ class World(object):
         self.camera_manager = None
         self.camera_manager2 = None
         self._weather_presets = find_weather_presets()
-        self._weather_index = 2
+        self._weather_index = 0
         self._actor_filter = args.filter
         self._actor_generation = args.generation
         self._gamma = args.gamma
@@ -313,24 +313,20 @@ class World(object):
         self.hud.notification('Weather: %s' % preset[1])
         self.player.get_world().set_weather(preset[0])
 
-    #換物件圖層
     def next_map_layer(self, reverse=False):
         self.current_map_layer += -1 if reverse else 1
         self.current_map_layer %= len(self.map_layer_names)
         selected = self.map_layer_names[self.current_map_layer]
         self.hud.notification('LayerMap selected: %s' % selected)
 
-    
     def load_map_layer(self, unload=False):
         selected = self.map_layer_names[self.current_map_layer]
         if unload:
             self.hud.notification('Unloading map layer: %s' % selected)
-            #關掉所有物件
-            self.world.unload_map_layer(carla.MapLayer.All)
+            self.world.unload_map_layer(selected)
         else:
             self.hud.notification('Loading map layer: %s' % selected)
-            #self.world.load_map_layer(selected)   一層一層開物件
-            self.world.load_map_layer(carla.MapLayer.All)
+            self.world.load_map_layer(selected)
 
     def toggle_radar(self):
         if self.radar_sensor is None:
@@ -1302,9 +1298,7 @@ def game_loop(args):
     try:
         client = carla.Client("127.0.0.1", args.port)
         client.set_timeout(2000.0)
-        client.load_world('Town04_Opt')
-        #print(client.get_available_maps())
-        #print(world.get_map())
+
         sim_world = client.get_world()
         if args.sync:
             original_settings = sim_world.get_settings()
