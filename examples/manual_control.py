@@ -241,8 +241,8 @@ class World(object):
         ]
 
     def restart(self):
-        self.player_max_speed = 0.500
-        self.player_max_speed_fast = 1.000
+        self.player_max_speed = 0.050
+        self.player_max_speed_fast = 0.500
         # Keep same camera config if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
@@ -271,6 +271,8 @@ class World(object):
         if self.player is not None:
             spawn_point = self.player.get_transform()
             spawn_point.location.z += 2.0
+            spawn_point.location.x = 360
+            spawn_point.location.y = 18
             spawn_point.rotation.roll = 0.0
             spawn_point.rotation.pitch = 0.0
             self.destroy()
@@ -282,8 +284,10 @@ class World(object):
                 print('There are no spawn points available in your map/town.')
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
+
             spawn_points = self.map.get_spawn_points()
-            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+            #spawn_point = random.choice(spawn_points) if spawn_points else carla.Transorm()
+            spawn_point = carla.Transform(carla.Location(x=360, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
@@ -386,7 +390,7 @@ class World(object):
             image_data = np.swapaxes(image_data, 0, 1)
             image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
             # Display the image using OpenCV
-            cv2.imshow('Camera View', image_data)
+            #cv2.imshow('Camera View', image_data)
             cv2.waitKey(1)
 
 
@@ -425,7 +429,7 @@ class KeyboardControl(object):
             elif event.type == pygame.KEYUP:
                 if self._is_quit_shortcut(event.key):
                     return True
-                elif event.key == K_BACKSPACE:
+                elif event.key == K_BACKSPACE or  world.player.get_transform().location.x < -450 :
                     if self._autopilot_enabled:
                         world.player.set_autopilot(False)
                         world.restart()
@@ -720,6 +724,7 @@ class HUD(object):
         self._notifications.tick(world, clock)
         if not self._show_info:
             return
+        #這裡
         t = world.player.get_transform()
         v = world.player.get_velocity()
         c = world.player.get_control()
@@ -1235,7 +1240,8 @@ class CameraManager(object):
             
             # Display the image using OpenCV
 
-            cv2.imshow('Camera View', frame)
+            #cv2.imshow('Camera View', frame)
+            
             cv2.waitKey(1)
 
     @staticmethod
@@ -1330,7 +1336,7 @@ def game_loop(args):
         hud = HUD(args.width, args.height)
         world = World(sim_world, hud, args)
         controller = KeyboardControl(world, args.autopilot)
-
+        
         if args.sync:
             sim_world.tick()
         else:
