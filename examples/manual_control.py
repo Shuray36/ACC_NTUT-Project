@@ -1337,6 +1337,51 @@ def game_loop(args):
         world = World(sim_world, hud, args)
         controller = KeyboardControl(world, args.autopilot)
         
+        # 獲取車輛藍圖
+        blueprint_library = sim_world.get_blueprint_library()
+        vehicle_bp = blueprint_library.filter('model3')[0]
+
+        # 選擇兩個隨機的生成點
+        #spawn_points = sim_world.get_map().get_spawn_points()
+        #spawn_point_1 = random.choice(spawn_points)
+        spawn_point_1 = carla.Transform(carla.Location(x=340, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
+
+
+        # 在這些點生成兩台車輛
+        vehicle_1 = sim_world.spawn_actor(vehicle_bp, spawn_point_1)
+
+        # 將第一台車設置為自動駕駛模式
+        vehicle_1.set_autopilot(True)
+
+        '''if self.player is not None:
+            spawn_point = self.player.get_transform()
+            spawn_point.location.z += 2.0
+            spawn_point.location.x = 360
+            spawn_point.location.y = 18
+            spawn_point.rotation.roll = 0.0
+            spawn_point.rotation.pitch = 0.0
+            self.destroy()
+            self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+            self.show_vehicle_telemetry = False
+            self.modify_vehicle_physics(self.player)
+        while self.player is None:
+            if not self.map.get_spawn_points():
+                print('There are no spawn points available in your map/town.')
+                print('Please add some Vehicle Spawn Point to your UE4 scene.')
+                sys.exit(1)
+
+            spawn_points = self.map.get_spawn_points()
+            #spawn_point = random.choice(spawn_points) if spawn_points else carla.Transorm()
+            spawn_point = carla.Transform(carla.Location(x=360, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
+            self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+            self.show_vehicle_telemetry = False
+            self.modify_vehicle_physics(self.player)'''
+
+        # 一些代碼來控制第二台車（例如，使用 Pygame 來處理鍵盤輸入）
+
+        # 運行一段時間然後清理
+        #time.sleep(60)
+        #vehicle_1.destroy()
         if args.sync:
             sim_world.tick()
         else:
