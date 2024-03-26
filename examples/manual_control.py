@@ -206,6 +206,7 @@ class World(object):
             sys.exit(1)
         self.hud = hud
         self.player = None
+        self.vehicle_1 = None
         self.collision_sensor = None
         self.lane_invasion_sensor = None
         self.gnss_sensor = None
@@ -219,6 +220,7 @@ class World(object):
         self._actor_generation = args.generation
         self._gamma = args.gamma
         self.restart()
+        self.respawn_vehicle_1()
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
         self.recording_start = 0
@@ -226,6 +228,7 @@ class World(object):
         self.show_vehicle_telemetry = False
         self.doors_are_open = False
         self.current_map_layer = 0
+        
         self.map_layer_names = [
             carla.MapLayer.NONE,
             carla.MapLayer.Buildings,
@@ -239,6 +242,8 @@ class World(object):
             carla.MapLayer.Walls,
             carla.MapLayer.All
         ]
+        # 獲取車輛藍圖
+        
 
     def restart(self):
         self.player_max_speed = 0.050
@@ -309,7 +314,38 @@ class World(object):
             self.world.tick()
         else:
             self.world.wait_for_tick()
+    def respawn_vehicle_1(self):
+        if self.vehicle_1 is None:
+            blueprint_library = self.world.get_blueprint_library()
+            vehicle_bp = blueprint_library.filter('model3')[0]
 
+            # 選擇兩個隨機的生成點
+            #spawn_points = sim_world.get_map().get_spawn_points()
+            #spawn_point_1 = random.choice(spawn_points)
+            spawn_point_1 = carla.Transform(carla.Location(x=340, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
+            
+
+            # 在這些點生成兩台車輛
+            self.vehicle_1 = self.world.try_spawn_actor(vehicle_bp, spawn_point_1)
+
+            # 將第一台車設置為自動駕駛模式
+            self.vehicle_1.set_autopilot(True)
+        else:
+            self.vehicle_1.destroy()
+            blueprint_library = self.world.get_blueprint_library()
+            vehicle_bp = blueprint_library.filter('model3')[0]
+
+            # 選擇兩個隨機的生成點
+            #spawn_points = sim_world.get_map().get_spawn_points()
+            #spawn_point_1 = random.choice(spawn_points)
+            spawn_point_1 = carla.Transform(carla.Location(x=340, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
+            
+
+            # 在這些點生成兩台車輛
+            self.vehicle_1 = self.world.try_spawn_actor(vehicle_bp, spawn_point_1)
+
+            # 將第一台車設置為自動駕駛模式
+            self.vehicle_1.set_autopilot(True)
     def next_weather(self, reverse=False):
         self._weather_index += -1 if reverse else 1
         self._weather_index %= len(self._weather_presets)
@@ -429,13 +465,16 @@ class KeyboardControl(object):
             elif event.type == pygame.KEYUP:
                 if self._is_quit_shortcut(event.key):
                     return True
-                elif event.key == K_BACKSPACE or  world.player.get_transform().location.x < -450 :
+                elif event.key == K_BACKSPACE or  world.player.get_transform().location.x < -400 or world.vehicle_1.get_transform().location.x <-400: #這
+                    if world.player.get_transform().location.x < -400 or event.key == K_BACKSPACE:
+                            world.restart()
+                    if world.vehicle_1.get_transform().location.x <-400:
+                            world.respawn_vehicle_1()
                     if self._autopilot_enabled:
                         world.player.set_autopilot(False)
-                        world.restart()
                         world.player.set_autopilot(True)
-                    else:
-                        world.restart()
+                    
+                        
                 elif event.key == K_F1:
                     world.hud.toggle_info()
                 elif event.key == K_v and pygame.key.get_mods() & KMOD_SHIFT:
@@ -1337,22 +1376,7 @@ def game_loop(args):
         world = World(sim_world, hud, args)
         controller = KeyboardControl(world, args.autopilot)
         
-        # 獲取車輛藍圖
-        blueprint_library = sim_world.get_blueprint_library()
-        vehicle_bp = blueprint_library.filter('model3')[0]
-
-        # 選擇兩個隨機的生成點
-        #spawn_points = sim_world.get_map().get_spawn_points()
-        #spawn_point_1 = random.choice(spawn_points)
-        spawn_point_1 = carla.Transform(carla.Location(x=340, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
-
-
-        # 在這些點生成兩台車輛
-        vehicle_1 = sim_world.spawn_actor(vehicle_bp, spawn_point_1)
-
-        # 將第一台車設置為自動駕駛模式
-        vehicle_1.set_autopilot(True)
-
+        
         '''if self.player is not None:
             spawn_point = self.player.get_transform()
             spawn_point.location.z += 2.0
