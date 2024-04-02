@@ -55,13 +55,15 @@ Use ARROWS or WASD keys for control.
 """
 
 from __future__ import print_function
-
+import numpy as np
+import torch
 
 # ==============================================================================
 # -- find carla module ---------------------------------------------------------
 # ==============================================================================
 
 
+import subprocess
 import glob
 import os
 import sys
@@ -75,6 +77,14 @@ try:
         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
 except IndexError:
     pass
+sys.path.append(r'C:\Users\User\anaconda3\Lib\site-packages\yolov7')
+import cv2
+
+from models.experimental import attempt_load
+from utils.plots import plot_one_box
+from utils.general import check_img_size, non_max_suppression, scale_coords
+from utils.torch_utils import select_device
+from utils.datasets import letterbox
 
 
 # ==============================================================================
@@ -197,6 +207,10 @@ class World(object):
         self.world = carla_world
         self.sync = args.sync
         self.actor_role_name = args.rolename
+        self.model = attempt_load('carla-car.pt', map_location='cuda')
+        self.stride = int(self.model.stride.max())
+        self.imgsz = check_img_size(640, s=self.stride)  # 更改圖像尺寸為模型預設值
+        self.device = select_device('0')  # 使用 CPU ('cpu') 或者 CUDA ('0')
         try:
             self.map = self.world.get_map()
         except RuntimeError as error:
@@ -248,7 +262,8 @@ class World(object):
     def restart(self):
         self.player_max_speed = 0.050
         self.player_max_speed_fast = 0.500
-        # Keep same camera config if the camera manager exists.
+
+        # Keep same camera tconfig if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
         # Get a random blueprint.
@@ -309,6 +324,8 @@ class World(object):
         self.camera_manager2.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
+
+        
 
         if self.sync:
             self.world.tick()
@@ -419,15 +436,77 @@ class World(object):
                 sensor.destroy()
         if self.player is not None:
             self.player.destroy()
-    def show_opencv(self):
+    def show_opencv(self, model,controller, client, clock, args):
         if self.camera_manager2.surface is not None:
             # Convert Pygame surface to OpenCV format
             image_data = pygame.surfarray.array3d(self.camera_manager2.surface)
             image_data = np.swapaxes(image_data, 0, 1)
             image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+
+            # Pre-process the image for YOLOv7
+            img = letterbox(image_data, new_shape=self.imgsz)[0]
+            img = img.transpose((2, 0, 1))  # HWC to CHW
+            img = np.ascontiguousarray(img)
+            img = torch.from_numpy(img).to(self.device)
+            img = img.float()  # uint8 to fp16/32
+            img /= 255.0  # 0 - 255 to 0.0 - 1.0
+
+            if img.ndimension() == 3:
+                img = img.unsqueeze(0)
+
+            self.player_max_speed = 0.050
+            self.player_max_speed_fast = 0.500
+            # Inference
+            pred = model(img, augment=False)[0]
+
+            # Apply non-max suppression
+            pred = non_max_suppression(pred, 0.4, 0.5, classes=None, agnostic=False)
+
+            # Process detections
+            for i, det in enumerate(pred):  # detections for image i
+                if len(det):
+                    # Rescale boxes from img size to im0 size
+                    det[:, :4] = scale_coords(img.shape[2:], det[:, :4], image_data.shape).round()
+
+                    # Write results
+                    for *xyxy, conf, cls in reversed(det):
+                        bbox_coordinates = xyxy
+            
+                        # Extract confidence score
+                        confidence = conf
+                        
+                        # Extract class index
+                        class_index = int(cls)
+
+                        # 計算邊界框的面積
+                        if(class_index == 0):
+                            if(confidence > 0.6):
+                                left_top_x = bbox_coordinates[0]
+                                left_top_y = bbox_coordinates[1]
+                                right_bottom_x = bbox_coordinates[2]
+                                right_bottom_y = bbox_coordinates[3]
+                                area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
+                                if(area > 6000):
+                                    controller._s_pressed = True
+                                # elif(area > 3000):
+                                    controller._w_pressed = False
+                                else:
+                                    controller._w_pressed = True
+                                    controller._s_pressed = False
+                        else:
+                            controller._w_pressed = True
+                            controller._s_pressed = False
+
+                        label = f'{model.names[int(cls)]} {conf:.2f}'
+                        plot_one_box(xyxy, image_data, label=label, color=(255, 0, 0), line_thickness=3)
+                else:
+                    controller._w_pressed = True
+                    controller._s_pressed = False
+
             # Display the image using OpenCV
-            #cv2.imshow('Camera View', image_data)
-            cv2.waitKey(1)
+            controller.parse_events(client, self, clock, args)
+            cv2.imshow('Camera View', image_data)
+            cv2.waitKey(1)  # 1 millisecond
 
 
 # ==============================================================================
@@ -441,6 +520,8 @@ class KeyboardControl(object):
         self._autopilot_enabled = start_in_autopilot
         self._ackermann_enabled = False
         self._ackermann_reverse = 0.5
+        self._w_pressed = True
+        self._s_pressed = False
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
             self._ackermann_control = carla.VehicleAckermannControl()
@@ -503,7 +584,6 @@ class KeyboardControl(object):
                     world.camera_manager.next_sensor()
                 elif event.key == K_w and (pygame.key.get_mods() & KMOD_CTRL):
                     if world.constant_velocity_enabled:
-                        world.player.disable_constant_velocity()
                         world.constant_velocity_enabled = False
                         world.hud.notification("Disabled Constant Velocity Mode")
                     else:
@@ -637,7 +717,7 @@ class KeyboardControl(object):
 
         if not self._autopilot_enabled:
             if isinstance(self._control, carla.VehicleControl):
-                self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time())
+                self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time(),world)
                 self._control.reverse = self._control.gear < 0
                 # Set automatic control-related vehicle lights
                 if self._control.brake:
@@ -665,21 +745,28 @@ class KeyboardControl(object):
                 self._parse_walker_keys(pygame.key.get_pressed(), clock.get_time(), world)
                 world.player.apply_control(self._control)
 
-    def _parse_vehicle_keys(self, keys, milliseconds):
-        if keys[K_UP] or keys[K_w]:
+    def _parse_vehicle_keys(self, keys, milliseconds,world):
+        v = world.player.get_velocity()
+        speed = 3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)
+        if keys[K_UP] or keys[K_w] or self._w_pressed:
             if not self._ackermann_enabled:
-                self._control.throttle = min(self._control.throttle + 0.1, 1.00)
+                if speed < 60:
+                    self._control.brake = 0.0
+                    self._control.throttle = min(self._control.throttle + 0.1, 1.00)
+                else:
+                    self._control.throttle = 0.0
+                    self._control.brake = min(self._control.brake + 0.1, 1.00)
             else:
                 self._ackermann_control.speed += round(milliseconds * 0.005, 2) * self._ackermann_reverse
         else:
             if not self._ackermann_enabled:
                 self._control.throttle = 0.0
 
-        if keys[K_DOWN] or keys[K_s]:
+        if keys[K_DOWN] or keys[K_s] or self._s_pressed:
             if not self._ackermann_enabled:
                 self._control.brake = min(self._control.brake + 0.2, 1)
             else:
-                self._ackermann_control.speed -= min(abs(self._ackermann_control.speed), round(milliseconds * 0.005, 2)) * self._ackermann_reverse
+                self._ackermann_control.speed -= min(abs(self._ackermann_control.speed), round(milliseconds * 0.05, 2)) * self._ackermann_reverse
                 self._ackermann_control.speed = max(0, abs(self._ackermann_control.speed)) * self._ackermann_reverse
         else:
             if not self._ackermann_enabled:
@@ -711,7 +798,7 @@ class KeyboardControl(object):
             self._control.speed = 0.0
         if keys[K_LEFT] or keys[K_a]:
             self._control.speed = .01
-            self._rotation.yaw -= 0.08 * milliseconds
+            self._rotation.yaw -= 0.08 * millisecondss
         if keys[K_RIGHT] or keys[K_d]:
             self._control.speed = .01
             self._rotation.yaw += 0.08 * milliseconds
@@ -1416,7 +1503,7 @@ def game_loop(args):
             if args.sync:
                 sim_world.tick()
             clock.tick_busy_loop(60)
-
+            world.show_opencv(world.model,controller,client, clock, args.sync)
             # Ensure world.player is not None before creating CameraManager
             if world.player is not None:
                 if not hasattr(world, 'camera_manager'):
@@ -1429,7 +1516,6 @@ def game_loop(args):
                 return
             world.tick(clock)
             world.render(display)
-            world.show_opencv()
             pygame.display.flip()
 
     finally:
