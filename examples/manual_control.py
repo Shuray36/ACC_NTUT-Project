@@ -264,7 +264,7 @@ class World(object):
 
     def restart(self,client):
         self.player_max_speed = 0.050
-        self.player_max_speed_fast = 0.500
+        self.player_max_speed_fast = 0.400
 
         # Keep same camera tconfig if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
@@ -458,7 +458,7 @@ class World(object):
                 img = img.unsqueeze(0)
 
             self.player_max_speed = 0.050
-            self.player_max_speed_fast = 0.500
+            self.player_max_speed_fast = 0.400
             # Inference
             pred = model(img, augment=False)[0]
 
@@ -491,7 +491,7 @@ class World(object):
                                 area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
                                 if(area > 6000):
                                     controller._s_pressed = True
-                                # elif(area > 3000):
+                                elif(area > 2500):
                                     controller._w_pressed = False
                                 else:
                                     controller._w_pressed = True
@@ -557,8 +557,6 @@ class KeyboardControl(object):
                     if self._autopilot_enabled:
                         world.player.set_autopilot(False)
                         world.player.set_autopilot(True)
-                    
-                        
                 elif event.key == K_F1:
                     world.hud.toggle_info()
                 elif event.key == K_v and pygame.key.get_mods() & KMOD_SHIFT:
@@ -753,21 +751,21 @@ class KeyboardControl(object):
         speed = 3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)
         if keys[K_UP] or keys[K_w] or self._w_pressed:
             if not self._ackermann_enabled:
-                if speed < 60:
+                if speed < 50:
                     self._control.brake = 0.0
-                    self._control.throttle = min(self._control.throttle + 0.1, 1.00)
+                    self._control.throttle = min(self._control.throttle + 0.03, 1.00)
                 else:
                     self._control.throttle = 0.0
-                    self._control.brake = min(self._control.brake + 0.1, 1.00)
+                    self._control.brake = min(self._control.brake + 0.01, 1.00)
             else:
-                self._ackermann_control.speed += round(milliseconds * 0.005, 2) * self._ackermann_reverse
+                self._ackermann_control.speed += round(milliseconds * 0.003, 2) * self._ackermann_reverse
         else:
             if not self._ackermann_enabled:
                 self._control.throttle = 0.0
 
         if keys[K_DOWN] or keys[K_s] or self._s_pressed:
             if not self._ackermann_enabled:
-                self._control.brake = min(self._control.brake + 0.2, 1)
+                self._control.brake = min(self._control.brake + 0.05, 1)
             else:
                 self._ackermann_control.speed -= min(abs(self._ackermann_control.speed), round(milliseconds * 0.05, 2)) * self._ackermann_reverse
                 self._ackermann_control.speed = max(0, abs(self._ackermann_control.speed)) * self._ackermann_reverse
