@@ -85,6 +85,7 @@ from utils.plots import plot_one_box
 from utils.general import check_img_size, non_max_suppression, scale_coords
 from utils.torch_utils import select_device
 from utils.datasets import letterbox
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
 
 # ==============================================================================
@@ -203,7 +204,7 @@ def get_actor_blueprints(world, filter, generation):
 
 
 class World(object):
-    def __init__(self, carla_world, hud, args):
+    def __init__(self, carla_world, hud, args, client):
         self.world = carla_world
         self.sync = args.sync
         self.actor_role_name = args.rolename
@@ -223,6 +224,8 @@ class World(object):
         self.vehicle_1 = None
         self.collision_sensor = None
         self.lane_invasion_sensor = None
+
+        self.traffic_manager = None
         self.gnss_sensor = None
         self.imu_sensor = None
         self.radar_sensor = None
@@ -233,7 +236,7 @@ class World(object):
         self._actor_filter = args.filter
         self._actor_generation = args.generation
         self._gamma = args.gamma
-        self.restart()
+        self.restart(client)
         self.respawn_vehicle_1()
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
@@ -259,18 +262,17 @@ class World(object):
         # 獲取車輛藍圖
         
 
-    def restart(self):
+    def restart(self,client):
         self.player_max_speed = 0.050
         self.player_max_speed_fast = 0.500
 
         # Keep same camera tconfig if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
-        # Get a random blueprint.
-        blueprint_list = get_actor_blueprints(self.world, self._actor_filter, self._actor_generation)
-        if not blueprint_list:
-            raise ValueError("Couldn't find any blueprints with the specified filters")
-        blueprint = random.choice(blueprint_list)
+        # Get a  blueprint.
+        blueprint_library = self.world.get_blueprint_library()
+        blueprint =blueprint_library.filter('model3')[0]
+
         blueprint.set_attribute('role_name', self.actor_role_name)
         if blueprint.has_attribute('terramechanics'):
             blueprint.set_attribute('terramechanics', 'true')
@@ -289,12 +291,8 @@ class World(object):
 
         # Spawn the player.
         if self.player is not None:
-            spawn_point = self.player.get_transform()
-            spawn_point.location.z += 2.0
-            spawn_point.location.x = 360
-            spawn_point.location.y = 18
-            spawn_point.rotation.roll = 0.0
-            spawn_point.rotation.pitch = 0.0
+            #改這裡
+            spawn_point = carla.Transform(carla.Location(x=320, y=14, z=2), carla.Rotation(pitch=0, yaw=181, roll=0))
             self.destroy()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.show_vehicle_telemetry = False
@@ -307,7 +305,7 @@ class World(object):
 
             spawn_points = self.map.get_spawn_points()
             #spawn_point = random.choice(spawn_points) if spawn_points else carla.Transorm()
-            spawn_point = carla.Transform(carla.Location(x=360, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
+            spawn_point = carla.Transform(carla.Location(x=320, y=14, z=2), carla.Rotation(pitch=0, yaw=181, roll=0))
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
@@ -320,6 +318,10 @@ class World(object):
         self.camera_manager.transform_index = cam_pos_index
         self.camera_manager.set_sensor(cam_index, notify=False)
         self.camera_manager2 = CameraManager(self.player, self.hud, self._gamma)
+        self.player.open_door(carla.VehicleDoor.FL)
+
+
+
         self.camera_manager2.transform_index = cam_pos_index
         self.camera_manager2.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
@@ -339,7 +341,8 @@ class World(object):
             # 選擇兩個隨機的生成點
             #spawn_points = sim_world.get_map().get_spawn_points()
             #spawn_point_1 = random.choice(spawn_points)
-            spawn_point_1 = carla.Transform(carla.Location(x=340, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
+            # x控制前後
+            spawn_point_1 = carla.Transform(carla.Location(x=300, y=14, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
             
 
             # 在這些點生成兩台車輛
@@ -355,7 +358,7 @@ class World(object):
             # 選擇兩個隨機的生成點
             #spawn_points = sim_world.get_map().get_spawn_points()
             #spawn_point_1 = random.choice(spawn_points)
-            spawn_point_1 = carla.Transform(carla.Location(x=340, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
+            spawn_point_1 = carla.Transform(carla.Location(x=300, y=14, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
             
 
             # 在這些點生成兩台車輛
@@ -546,10 +549,10 @@ class KeyboardControl(object):
             elif event.type == pygame.KEYUP:
                 if self._is_quit_shortcut(event.key):
                     return True
-                elif event.key == K_BACKSPACE or  world.player.get_transform().location.x < -400 or world.vehicle_1.get_transform().location.x <-400: #這
-                    if world.player.get_transform().location.x < -400 or event.key == K_BACKSPACE:
-                            world.restart()
-                    if world.vehicle_1.get_transform().location.x <-400:
+                elif event.key == K_BACKSPACE or  world.player.get_transform().location.x < 310 or world.vehicle_1.get_transform().location.x <310: #這
+                    if world.player.get_transform().location.x < 310 or event.key == K_BACKSPACE:
+                            world.restart(client)
+                    if world.vehicle_1.get_transform().location.x <310:
                             world.respawn_vehicle_1()
                     if self._autopilot_enabled:
                         world.player.set_autopilot(False)
@@ -798,7 +801,7 @@ class KeyboardControl(object):
             self._control.speed = 0.0
         if keys[K_LEFT] or keys[K_a]:
             self._control.speed = .01
-            self._rotation.yaw -= 0.08 * millisecondss
+            self._rotation.yaw -= 0.08 * milliseconds
         if keys[K_RIGHT] or keys[K_d]:
             self._control.speed = .01
             self._rotation.yaw += 0.08 * milliseconds
@@ -1446,8 +1449,8 @@ def game_loop(args):
                 settings.fixed_delta_seconds = 0.05
             sim_world.apply_settings(settings)
 
-            traffic_manager = client.get_trafficmanager()
-            traffic_manager.set_synchronous_mode(True)
+            
+           
 
         if args.autopilot and not sim_world.get_settings().synchronous_mode:
             print("WARNING: You are currently in asynchronous mode and could "
@@ -1460,8 +1463,10 @@ def game_loop(args):
         pygame.display.flip()
 
         hud = HUD(args.width, args.height)
-        world = World(sim_world, hud, args)
+        world = World(sim_world, hud, args,client)
         controller = KeyboardControl(world, args.autopilot)
+
+        
         
         
         '''if self.player is not None:
