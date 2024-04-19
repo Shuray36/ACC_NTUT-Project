@@ -77,7 +77,8 @@ try:
         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
 except IndexError:
     pass
-sys.path.append(r'C:\Users\User\anaconda3\Lib\site-packages\yolov7')
+sys.path.append(r'C:\Users\aaa95\OneDrive\桌面\carla-tmpdata\ACC\yolov7')
+
 import cv2
 
 from models.experimental import attempt_load
