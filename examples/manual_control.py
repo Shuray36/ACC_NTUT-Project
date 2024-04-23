@@ -237,6 +237,7 @@ class World(object):
         self._actor_generation = args.generation
         self._gamma = args.gamma
         self.restart(client)
+        self._controll_traffic = client.get_trafficmanager()
         self.respawn_vehicle_1()
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
@@ -245,7 +246,6 @@ class World(object):
         self.show_vehicle_telemetry = False
         self.doors_are_open = False
         self.current_map_layer = 0
-        
         self.map_layer_names = [
             carla.MapLayer.NONE,
             carla.MapLayer.Buildings,
@@ -254,7 +254,7 @@ class World(object):
             carla.MapLayer.Ground,
             carla.MapLayer.ParkedVehicles,
             carla.MapLayer.Particles,
-            carla.MapLayer.Props,
+            carla.MapLayer.Props,   
             carla.MapLayer.StreetLights,
             carla.MapLayer.Walls,
             carla.MapLayer.All
@@ -366,6 +366,7 @@ class World(object):
 
             # 將第一台車設置為自動駕駛模式
             self.vehicle_1.set_autopilot(True)
+        self._controll_traffic.set_desired_speed(self.vehicle_1,45)
     def next_weather(self, reverse=False):
         self._weather_index += -1 if reverse else 1
         self._weather_index %= len(self._weather_presets)
@@ -489,9 +490,9 @@ class World(object):
                                 right_bottom_x = bbox_coordinates[2]
                                 right_bottom_y = bbox_coordinates[3]
                                 area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
-                                if(area > 6000):
+                                if(area > 8000):
                                     controller._s_pressed = True
-                                elif(area > 2500):
+                                elif(area > 3500):
                                     controller._w_pressed = False
                                 else:
                                     controller._w_pressed = True
@@ -549,14 +550,9 @@ class KeyboardControl(object):
             elif event.type == pygame.KEYUP:
                 if self._is_quit_shortcut(event.key):
                     return True
-                elif event.key == K_BACKSPACE or  world.player.get_transform().location.x < 310 or world.vehicle_1.get_transform().location.x <310: #這
-                    if world.player.get_transform().location.x < 310 or event.key == K_BACKSPACE:
+                elif event.key == K_BACKSPACE : 
+                    if event.key == K_BACKSPACE:
                             world.restart(client)
-                    if world.vehicle_1.get_transform().location.x <310:
-                            world.respawn_vehicle_1()
-                    if self._autopilot_enabled:
-                        world.player.set_autopilot(False)
-                        world.player.set_autopilot(True)
                 elif event.key == K_F1:
                     world.hud.toggle_info()
                 elif event.key == K_v and pygame.key.get_mods() & KMOD_SHIFT:
@@ -715,6 +711,18 @@ class KeyboardControl(object):
                         current_lights ^= carla.VehicleLightState.LeftBlinker
                     elif event.key == K_x:
                         current_lights ^= carla.VehicleLightState.RightBlinker
+            '''
+            if world.player.get_transform().location.x < 220 or world.vehicle_1.get_transform().location.x <220: 
+                if world.player.get_transform().location.x < 220 :
+                        print(111111111111111111111111)
+                        world.restart(client)
+                if world.vehicle_1.get_transform().location.x <220:
+                        world.respawn_vehicle_1()
+                if self._autopilot_enabled:
+                    world.player.set_autopilot(False)
+                    world.player.set_autopilot(True)
+            '''
+            
 
         if not self._autopilot_enabled:
             if isinstance(self._control, carla.VehicleControl):
@@ -852,9 +860,12 @@ class HUD(object):
         if not self._show_info:
             return
         #這裡
-        t = world.player.get_transform()
-        v = world.player.get_velocity()
-        c = world.player.get_control()
+        t = world.vehicle_1.get_transform()
+        v = world.vehicle_1.get_velocity()
+        c = world.vehicle_1.get_control()
+        t1 = world.player.get_transform()
+        v1 = world.player.get_velocity()
+        c1 = world.player.get_control()
         compass = world.imu_sensor.compass
         heading = 'N' if compass > 270.5 or compass < 89.5 else ''
         heading += 'S' if 90.5 < compass < 269.5 else ''
@@ -873,6 +884,7 @@ class HUD(object):
             'Map:     % 20s' % world.map.name.split('/')[-1],
             'Simulation time: % 12s' % datetime.timedelta(seconds=int(self.simulation_time)),
             '',
+            'Self Speed:   % 15.0f km/h' % (3.6 * math.sqrt(v1.x**2 + v1.y**2 + v1.z**2)),
             'Speed:   % 15.0f km/h' % (3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)),
             u'Compass:% 17.0f\N{DEGREE SIGN} % 2s' % (compass, heading),
             'Accelero: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.accelerometer),
@@ -1517,6 +1529,15 @@ def game_loop(args):
 
             if controller.parse_events(client, world, clock, args.sync):
                 return
+
+            if world.player.get_transform().location.x < -400 or world.vehicle_1.get_transform().location.x <-400: 
+                if world.player.get_transform().location.x < -400 :
+                        world.restart(client)
+                if world.vehicle_1.get_transform().location.x <-400:
+                        world.respawn_vehicle_1()
+                if controller._autopilot_enabled:
+                    world.player.set_autopilot(False)
+                    world.player.set_autopilot(True)
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
