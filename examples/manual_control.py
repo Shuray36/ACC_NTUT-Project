@@ -490,9 +490,9 @@ class World(object):
                                 right_bottom_x = bbox_coordinates[2]
                                 right_bottom_y = bbox_coordinates[3]
                                 area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
-                                if(area > 8000):
+                                if(area > 5500):
                                     controller._s_pressed = True
-                                elif(area > 3500):
+                                elif(area > 2500):
                                     controller._w_pressed = False
                                 else:
                                     controller._w_pressed = True
@@ -512,6 +512,78 @@ class World(object):
             cv2.imshow('Camera View', image_data)
             cv2.waitKey(1)  # 1 millisecond
 
+    def show_opencv2(self, model, controller, client, clock, args):
+        if self.camera_manager2.surface is not None:
+            # Convert Pygame surface to OpenCV format
+            image_data = pygame.surfarray.array3d(self.camera_manager2.surface)
+            image_data = np.swapaxes(image_data, 0, 1)
+            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+
+            # Load the image
+            # image = cv2.imread('image.png')  # No need to load an image file
+            height, width, _ = image_data.shape
+
+            # 打印解析度
+
+            # Convert to grayscale
+            gray = cv2.cvtColor(image_data, cv2.COLOR_BGR2GRAY)
+
+            # Gaussian blur
+            blur = cv2.GaussianBlur(gray, (5, 5), 0)
+
+            # Canny edge detection
+            edges = cv2.Canny(blur, 0, 75)  # Adjust thresholds as needed
+
+            # Binarization
+            _, binary = cv2.threshold(edges, 10, 255, cv2.THRESH_BINARY)
+
+            # Define dilation kernel
+            kernel = np.ones((5, 5), np.uint8)
+
+            # Dilation
+            dilated_image = cv2.dilate(binary, kernel, iterations=5)
+
+            #cv2.imshow('binary', resized_dilated_image)
+
+            # Create a mask for the region of interest
+            height, width = dilated_image.shape
+            mask = np.zeros_like(dilated_image)
+            extend_length = 40
+            polygon = np.array([[
+                (610, 370),
+                (680, 370),
+                (1050, 700),
+                (250, 700),
+            ]], np.int32)
+            cv2.fillPoly(mask, polygon, 255)
+
+            # Apply mask to Canny edge detection output
+            masked_edges = cv2.bitwise_and(dilated_image, mask)
+
+            #cv2.imshow('mask', resized_masked_edges)
+
+            # Hough transform to detect lines
+            lines = cv2.HoughLinesP(masked_edges, 1, np.pi/180, threshold=230, minLineLength=100, maxLineGap=300)
+
+            # Draw lines
+            if lines is not None:
+                for line in lines:
+                    for x1, y1, x2, y2 in line:
+                        cv2.line(image_data, (x1, y1), (x2, y2), (255, 0, 0), 5)
+
+            '''
+            # Mark the position of a blue dot (example positions provided)
+            blue_dot_position = (1650, 1050)  # Example position, change as needed
+            blue_color = (255, 0, 0)  # BGR color format
+            radius = 10  # Dot radius
+            cv2.circle(image_data, blue_dot_position, radius, blue_color, -1)  # Fill the circle
+            '''
+
+            resized_image = cv2.resize(image_data,(1921, 1073))
+            cv2.imshow('Lane Lines', resized_image)
+            cv2.waitKey(1)  # 1 millisecond
+
+            
 
 # ==============================================================================
 # -- KeyboardControl -----------------------------------------------------------
@@ -1519,6 +1591,7 @@ def game_loop(args):
                 sim_world.tick()
             clock.tick_busy_loop(60)
             world.show_opencv(world.model,controller,client, clock, args.sync)
+            world.show_opencv2(world.model,controller,client, clock, args.sync)
             # Ensure world.player is not None before creating CameraManager
             if world.player is not None:
                 if not hasattr(world, 'camera_manager'):
@@ -1531,9 +1604,9 @@ def game_loop(args):
                 return
 
             if world.player.get_transform().location.x < -400 or world.vehicle_1.get_transform().location.x <-400: 
-                if world.player.get_transform().location.x < -400 :
+                if world.player.get_transform().location.x < -200 :
                         world.restart(client)
-                if world.vehicle_1.get_transform().location.x <-400:
+                if world.vehicle_1.get_transform().location.x <-200:
                         world.respawn_vehicle_1()
                 if controller._autopilot_enabled:
                     world.player.set_autopilot(False)
