@@ -246,10 +246,12 @@ class World(object):
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
         # Get a random blueprint.
-        blueprint_list = get_actor_blueprints(self.world, self._actor_filter, self._actor_generation)
-        if not blueprint_list:
-            raise ValueError("Couldn't find any blueprints with the specified filters")
-        blueprint = random.choice(blueprint_list)
+        #blueprint_list = get_actor_blueprints(self.world, self._actor_filter, self._actor_generation)
+        # if not blueprint_list:
+        #     raise ValueError("Couldn't find any blueprints with the specified filters")
+        #here
+        blueprint_library = self.world.get_blueprint_library()
+        blueprint =blueprint_library.filter('model3')[0]
         blueprint.set_attribute('role_name', self.actor_role_name)
         if blueprint.has_attribute('terramechanics'):
             blueprint.set_attribute('terramechanics', 'true')
@@ -384,7 +386,7 @@ class KeyboardControl(object):
             self._control = carla.VehicleControl()
             self._ackermann_control = carla.VehicleAckermannControl()
             self._lights = carla.VehicleLightState.NONE
-            world.player.set_autopilot(self._autopilot_enabled)
+            #world.player.set_autopilot(self._autopilot_enabled)
             world.player.set_light_state(self._lights)
         elif isinstance(world.player, carla.Walker):
             self._control = carla.WalkerControl()
@@ -1097,10 +1099,10 @@ class CameraManager(object):
 
         if not self._parent.type_id.startswith("walker.pedestrian"):
             self._camera_transforms = [
-                (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
-                (carla.Transform(carla.Location(x=-1.0*bound_x, y=+0.0*bound_y, z=1.3*bound_z), carla.Rotation(yaw=180)), Attachment.Rigid),
-                # (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
-                # (carla.Transform(carla.Location(x=-2.0*bound_x, y=-0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                (carla.Transform(carla.Location(x=+0.0*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                #(carla.Transform(carla.Location(x=-1.0*bound_x, y=+0.0*bound_y, z=1.3*bound_z), carla.Rotation(yaw=180)), Attachment.Rigid),
+                (carla.Transform(carla.Location(x=+0.1*bound_x, y=+0.7*bound_y, z=0.9*bound_z), carla.Rotation(yaw=150)), Attachment.Rigid),
+                (carla.Transform(carla.Location(x=+0.1*bound_x, y=-0.7*bound_y, z=0.9*bound_z), carla.Rotation(yaw=210)), Attachment.Rigid),
                 
                 ]
         else:
