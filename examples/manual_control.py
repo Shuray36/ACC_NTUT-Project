@@ -209,6 +209,7 @@ class World(object):
         self.world = carla_world
         self.sync = args.sync
         self.actor_role_name = args.rolename
+        self._control = carla.VehicleControl()
         self.model = attempt_load('carla-car.pt', map_location='cuda')
         self.stride = int(self.model.stride.max())
         self.imgsz = check_img_size(640, s=self.stride)  # 更改圖像尺寸為模型預設值
@@ -483,23 +484,31 @@ class World(object):
                         class_index = int(cls)
 
                         # 計算邊界框的面積
-                        if(class_index == 0):
-                            if(confidence > 0.6):
-                                left_top_x = bbox_coordinates[0]
-                                left_top_y = bbox_coordinates[1]
-                                right_bottom_x = bbox_coordinates[2]
-                                right_bottom_y = bbox_coordinates[3]
+                        if class_index == 0:  # Assume class_index 0 represents the front car
+                            if confidence > 0.6:
+                                left_top_x, left_top_y, right_bottom_x, right_bottom_y = bbox_coordinates
                                 area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
-                                if(area > 6000):
-                                    controller._s_pressed = True
-                                elif(area > 2500):
-                                    controller._w_pressed = False
+
+                                if area > 7000:
+                                    # Decelerate
+                                    self._control.throttle = 0.0
+                                    self._control.brake = min(self._control.brake + 0.01, 1.0)
+                                elif area < 6000:
+                                    # Accelerate
+                                    self._control.brake = 0.0
+                                    self._control.throttle = min(self._control.throttle + 0.03, 1.0)
                                 else:
-                                    controller._w_pressed = True
-                                    controller._s_pressed = False
+                                    # Maintain current speed
+                                    self._control.brake = 0.0
+                            else:
+                                # No front car detected, maintain current speed
+                                self._control.brake = 0.0
+
+                            label = f'{model.names[int(cls)]} {conf:.2f}'
+                            plot_one_box(xyxy, image_data, label=label, color=(255, 0, 0), line_thickness=3)
                         else:
-                            controller._w_pressed = True
-                            controller._s_pressed = False
+                            # No front car detected, maintain current speed
+                            self._control.brake = 0.0
 
                         label = f'{model.names[int(cls)]} {conf:.2f}'
                         plot_one_box(xyxy, image_data, label=label, color=(255, 0, 0), line_thickness=3)
