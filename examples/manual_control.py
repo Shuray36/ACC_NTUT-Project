@@ -55,15 +55,13 @@ Use ARROWS or WASD keys for control.
 """
 
 from __future__ import print_function
-import numpy as np
-import torch
+
 
 # ==============================================================================
 # -- find carla module ---------------------------------------------------------
 # ==============================================================================
 
 
-import subprocess
 import glob
 import os
 import sys
@@ -77,16 +75,6 @@ try:
         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
 except IndexError:
     pass
-sys.path.append(r'C:\Users\aaa95\OneDrive\桌面\carla-tmpdata\ACC\yolov7')
-
-import cv2
-
-from models.experimental import attempt_load
-from utils.plots import plot_one_box
-from utils.general import check_img_size, non_max_suppression, scale_coords
-from utils.torch_utils import select_device
-from utils.datasets import letterbox
-from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
 
 # ==============================================================================
@@ -205,15 +193,10 @@ def get_actor_blueprints(world, filter, generation):
 
 
 class World(object):
-    def __init__(self, carla_world, hud, args, client):
+    def __init__(self, carla_world, hud, args):
         self.world = carla_world
         self.sync = args.sync
         self.actor_role_name = args.rolename
-        self._control = carla.VehicleControl()
-        self.model = attempt_load('carla-car.pt', map_location='cuda')
-        self.stride = int(self.model.stride.max())
-        self.imgsz = check_img_size(640, s=self.stride)  # 更改圖像尺寸為模型預設值
-        self.device = select_device('0')  # 使用 CPU ('cpu') 或者 CUDA ('0')
         try:
             self.map = self.world.get_map()
         except RuntimeError as error:
@@ -223,23 +206,18 @@ class World(object):
             sys.exit(1)
         self.hud = hud
         self.player = None
-        self.vehicle_1 = None
         self.collision_sensor = None
         self.lane_invasion_sensor = None
-
-        self.traffic_manager = None
         self.gnss_sensor = None
         self.imu_sensor = None
         self.radar_sensor = None
         self.camera_manager = None
-        self.camera_manager2 = None
         self._weather_presets = find_weather_presets()
-        self._weather_index = 2
+        self._weather_index = 0
         self._actor_filter = args.filter
         self._actor_generation = args.generation
         self._gamma = args.gamma
-        self.restart(client)
-        self.respawn_vehicle_1()
+        self.restart()
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
         self.recording_start = 0
@@ -247,7 +225,6 @@ class World(object):
         self.show_vehicle_telemetry = False
         self.doors_are_open = False
         self.current_map_layer = 0
-        
         self.map_layer_names = [
             carla.MapLayer.NONE,
             carla.MapLayer.Buildings,
@@ -261,20 +238,18 @@ class World(object):
             carla.MapLayer.Walls,
             carla.MapLayer.All
         ]
-        # 獲取車輛藍圖
-        
 
-    def restart(self,client):
-        self.player_max_speed = 0.050
-        self.player_max_speed_fast = 0.400
-
-        # Keep same camera tconfig if the camera manager exists.
+    def restart(self):
+        self.player_max_speed = 1.589
+        self.player_max_speed_fast = 3.713
+        # Keep same camera config if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
-        # Get a  blueprint.
-        blueprint_library = self.world.get_blueprint_library()
-        blueprint =blueprint_library.filter('model3')[0]
-
+        # Get a random blueprint.
+        blueprint_list = get_actor_blueprints(self.world, self._actor_filter, self._actor_generation)
+        if not blueprint_list:
+            raise ValueError("Couldn't find any blueprints with the specified filters")
+        blueprint = random.choice(blueprint_list)
         blueprint.set_attribute('role_name', self.actor_role_name)
         if blueprint.has_attribute('terramechanics'):
             blueprint.set_attribute('terramechanics', 'true')
@@ -293,8 +268,10 @@ class World(object):
 
         # Spawn the player.
         if self.player is not None:
-            #改這裡
-            spawn_point = carla.Transform(carla.Location(x=320, y=14, z=2), carla.Rotation(pitch=0, yaw=181, roll=0))
+            spawn_point = self.player.get_transform()
+            spawn_point.location.z += 2.0
+            spawn_point.rotation.roll = 0.0
+            spawn_point.rotation.pitch = 0.0
             self.destroy()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.show_vehicle_telemetry = False
@@ -304,10 +281,8 @@ class World(object):
                 print('There are no spawn points available in your map/town.')
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
-
             spawn_points = self.map.get_spawn_points()
-            #spawn_point = random.choice(spawn_points) if spawn_points else carla.Transorm()
-            spawn_point = carla.Transform(carla.Location(x=320, y=14, z=2), carla.Rotation(pitch=0, yaw=181, roll=0))
+            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
@@ -319,55 +294,14 @@ class World(object):
         self.camera_manager = CameraManager(self.player, self.hud, self._gamma)
         self.camera_manager.transform_index = cam_pos_index
         self.camera_manager.set_sensor(cam_index, notify=False)
-        self.camera_manager2 = CameraManager(self.player, self.hud, self._gamma)
-        self.player.open_door(carla.VehicleDoor.FL)
-
-
-
-        self.camera_manager2.transform_index = cam_pos_index
-        self.camera_manager2.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
-
-        
 
         if self.sync:
             self.world.tick()
         else:
             self.world.wait_for_tick()
-    def respawn_vehicle_1(self):
-        if self.vehicle_1 is None:
-            blueprint_library = self.world.get_blueprint_library()
-            vehicle_bp = blueprint_library.filter('model3')[0]
 
-            # 選擇兩個隨機的生成點
-            #spawn_points = sim_world.get_map().get_spawn_points()
-            #spawn_point_1 = random.choice(spawn_points)
-            # x控制前後
-            spawn_point_1 = carla.Transform(carla.Location(x=300, y=14, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
-            
-
-            # 在這些點生成兩台車輛
-            self.vehicle_1 = self.world.try_spawn_actor(vehicle_bp, spawn_point_1)
-
-            # 將第一台車設置為自動駕駛模式
-            self.vehicle_1.set_autopilot(True)
-        else:
-            self.vehicle_1.destroy()
-            blueprint_library = self.world.get_blueprint_library()
-            vehicle_bp = blueprint_library.filter('model3')[0]
-
-            # 選擇兩個隨機的生成點
-            #spawn_points = sim_world.get_map().get_spawn_points()
-            #spawn_point_1 = random.choice(spawn_points)
-            spawn_point_1 = carla.Transform(carla.Location(x=300, y=14, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
-            
-
-            # 在這些點生成兩台車輛
-            self.vehicle_1 = self.world.try_spawn_actor(vehicle_bp, spawn_point_1)
-
-            # 將第一台車設置為自動駕駛模式
-            self.vehicle_1.set_autopilot(True)
     def next_weather(self, reverse=False):
         self._weather_index += -1 if reverse else 1
         self._weather_index %= len(self._weather_presets)
@@ -375,24 +309,20 @@ class World(object):
         self.hud.notification('Weather: %s' % preset[1])
         self.player.get_world().set_weather(preset[0])
 
-    #換物件圖層
     def next_map_layer(self, reverse=False):
         self.current_map_layer += -1 if reverse else 1
         self.current_map_layer %= len(self.map_layer_names)
         selected = self.map_layer_names[self.current_map_layer]
         self.hud.notification('LayerMap selected: %s' % selected)
 
-    
     def load_map_layer(self, unload=False):
         selected = self.map_layer_names[self.current_map_layer]
         if unload:
             self.hud.notification('Unloading map layer: %s' % selected)
-            #關掉所有物件
-            self.world.unload_map_layer(carla.MapLayer.All)
+            self.world.unload_map_layer(selected)
         else:
             self.hud.notification('Loading map layer: %s' % selected)
-            #self.world.load_map_layer(selected)   一層一層開物件
-            self.world.load_map_layer(carla.MapLayer.All)
+            self.world.load_map_layer(selected)
 
     def toggle_radar(self):
         if self.radar_sensor is None:
@@ -421,16 +351,12 @@ class World(object):
         self.camera_manager.sensor.destroy()
         self.camera_manager.sensor = None
         self.camera_manager.index = None
-        self.camera_manager2.sensor.destroy()
-        self.camera_manager2.sensor = None
-        self.camera_manager2.index = None
 
     def destroy(self):
         if self.radar_sensor is not None:
             self.toggle_radar()
         sensors = [
             self.camera_manager.sensor,
-            self.camera_manager2.sensor,
             self.collision_sensor.sensor,
             self.lane_invasion_sensor.sensor,
             self.gnss_sensor.sensor,
@@ -441,85 +367,6 @@ class World(object):
                 sensor.destroy()
         if self.player is not None:
             self.player.destroy()
-    def show_opencv(self, model,controller, client, clock, args):
-        if self.camera_manager2.surface is not None:
-            # Convert Pygame surface to OpenCV format
-            image_data = pygame.surfarray.array3d(self.camera_manager2.surface)
-            image_data = np.swapaxes(image_data, 0, 1)
-            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
-
-            # Pre-process the image for YOLOv7
-            img = letterbox(image_data, new_shape=self.imgsz)[0]
-            img = img.transpose((2, 0, 1))  # HWC to CHW
-            img = np.ascontiguousarray(img)
-            img = torch.from_numpy(img).to(self.device)
-            img = img.float()  # uint8 to fp16/32
-            img /= 255.0  # 0 - 255 to 0.0 - 1.0
-
-            if img.ndimension() == 3:
-                img = img.unsqueeze(0)
-
-            self.player_max_speed = 0.050
-            self.player_max_speed_fast = 0.400
-            # Inference
-            pred = model(img, augment=False)[0]
-
-            # Apply non-max suppression
-            pred = non_max_suppression(pred, 0.4, 0.5, classes=None, agnostic=False)
-
-            # Process detections
-            for i, det in enumerate(pred):  # detections for image i
-                if len(det):
-                    # Rescale boxes from img size to im0 size
-                    det[:, :4] = scale_coords(img.shape[2:], det[:, :4], image_data.shape).round()
-
-                    # Write results
-                    for *xyxy, conf, cls in reversed(det):
-                        bbox_coordinates = xyxy
-            
-                        # Extract confidence score
-                        confidence = conf
-                        
-                        # Extract class index
-                        class_index = int(cls)
-
-                        # 計算邊界框的面積
-                        if class_index == 0:  # Assume class_index 0 represents the front car
-                            if confidence > 0.6:
-                                left_top_x, left_top_y, right_bottom_x, right_bottom_y = bbox_coordinates
-                                area = (right_bottom_x - left_top_x) * (right_bottom_y - left_top_y)
-
-                                if area > 7000:
-                                    # Decelerate
-                                    self._control.throttle = 0.0
-                                    self._control.brake = min(self._control.brake + 0.01, 1.0)
-                                elif area < 6000:
-                                    # Accelerate
-                                    self._control.brake = 0.0
-                                    self._control.throttle = min(self._control.throttle + 0.03, 1.0)
-                                else:
-                                    # Maintain current speed
-                                    self._control.brake = 0.0
-                            else:
-                                # No front car detected, maintain current speed
-                                self._control.brake = 0.0
-
-                            label = f'{model.names[int(cls)]} {conf:.2f}'
-                            plot_one_box(xyxy, image_data, label=label, color=(255, 0, 0), line_thickness=3)
-                        else:
-                            # No front car detected, maintain current speed
-                            self._control.brake = 0.0
-
-                        label = f'{model.names[int(cls)]} {conf:.2f}'
-                        plot_one_box(xyxy, image_data, label=label, color=(255, 0, 0), line_thickness=3)
-                else:
-                    controller._w_pressed = True
-                    controller._s_pressed = False
-
-            # Display the image using OpenCV
-            controller.parse_events(client, self, clock, args)
-            cv2.imshow('Camera View', image_data)
-            cv2.waitKey(1)  # 1 millisecond
 
 
 # ==============================================================================
@@ -532,9 +379,7 @@ class KeyboardControl(object):
     def __init__(self, world, start_in_autopilot):
         self._autopilot_enabled = start_in_autopilot
         self._ackermann_enabled = False
-        self._ackermann_reverse = 0.5
-        self._w_pressed = True
-        self._s_pressed = False
+        self._ackermann_reverse = 1
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
             self._ackermann_control = carla.VehicleAckermannControl()
@@ -559,14 +404,13 @@ class KeyboardControl(object):
             elif event.type == pygame.KEYUP:
                 if self._is_quit_shortcut(event.key):
                     return True
-                elif event.key == K_BACKSPACE or  world.player.get_transform().location.x < 310 or world.vehicle_1.get_transform().location.x <310: #這
-                    if world.player.get_transform().location.x < 310 or event.key == K_BACKSPACE:
-                            world.restart(client)
-                    if world.vehicle_1.get_transform().location.x <310:
-                            world.respawn_vehicle_1()
+                elif event.key == K_BACKSPACE:
                     if self._autopilot_enabled:
                         world.player.set_autopilot(False)
+                        world.restart()
                         world.player.set_autopilot(True)
+                    else:
+                        world.restart()
                 elif event.key == K_F1:
                     world.hud.toggle_info()
                 elif event.key == K_v and pygame.key.get_mods() & KMOD_SHIFT:
@@ -580,9 +424,7 @@ class KeyboardControl(object):
                 elif event.key == K_h or (event.key == K_SLASH and pygame.key.get_mods() & KMOD_SHIFT):
                     world.hud.help.toggle()
                 elif event.key == K_TAB:
-                    world_index = (world.camera_manager.transform_index + 1) % len(world.camera_manager._camera_transforms)
-                    world.camera_manager.toggle_camera(world_index)
-                    world.camera_manager2.toggle_camera(0)
+                    world.camera_manager.toggle_camera()
                 elif event.key == K_c and pygame.key.get_mods() & KMOD_SHIFT:
                     world.next_weather(reverse=True)
                 elif event.key == K_c:
@@ -595,6 +437,7 @@ class KeyboardControl(object):
                     world.camera_manager.next_sensor()
                 elif event.key == K_w and (pygame.key.get_mods() & KMOD_CTRL):
                     if world.constant_velocity_enabled:
+                        world.player.disable_constant_velocity()
                         world.constant_velocity_enabled = False
                         world.hud.notification("Disabled Constant Velocity Mode")
                     else:
@@ -728,7 +571,7 @@ class KeyboardControl(object):
 
         if not self._autopilot_enabled:
             if isinstance(self._control, carla.VehicleControl):
-                self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time(),world)
+                self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time())
                 self._control.reverse = self._control.gear < 0
                 # Set automatic control-related vehicle lights
                 if self._control.brake:
@@ -756,28 +599,21 @@ class KeyboardControl(object):
                 self._parse_walker_keys(pygame.key.get_pressed(), clock.get_time(), world)
                 world.player.apply_control(self._control)
 
-    def _parse_vehicle_keys(self, keys, milliseconds,world):
-        v = world.player.get_velocity()
-        speed = 3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)
-        if keys[K_UP] or keys[K_w] or self._w_pressed:
+    def _parse_vehicle_keys(self, keys, milliseconds):
+        if keys[K_UP] or keys[K_w]:
             if not self._ackermann_enabled:
-                if speed < 50:
-                    self._control.brake = 0.0
-                    self._control.throttle = min(self._control.throttle + 0.03, 1.00)
-                else:
-                    self._control.throttle = 0.0
-                    self._control.brake = min(self._control.brake + 0.01, 1.00)
+                self._control.throttle = min(self._control.throttle + 0.1, 1.00)
             else:
-                self._ackermann_control.speed += round(milliseconds * 0.003, 2) * self._ackermann_reverse
+                self._ackermann_control.speed += round(milliseconds * 0.005, 2) * self._ackermann_reverse
         else:
             if not self._ackermann_enabled:
                 self._control.throttle = 0.0
 
-        if keys[K_DOWN] or keys[K_s] or self._s_pressed:
+        if keys[K_DOWN] or keys[K_s]:
             if not self._ackermann_enabled:
-                self._control.brake = min(self._control.brake + 0.05, 1)
+                self._control.brake = min(self._control.brake + 0.2, 1)
             else:
-                self._ackermann_control.speed -= min(abs(self._ackermann_control.speed), round(milliseconds * 0.05, 2)) * self._ackermann_reverse
+                self._ackermann_control.speed -= min(abs(self._ackermann_control.speed), round(milliseconds * 0.005, 2)) * self._ackermann_reverse
                 self._ackermann_control.speed = max(0, abs(self._ackermann_control.speed)) * self._ackermann_reverse
         else:
             if not self._ackermann_enabled:
@@ -861,7 +697,6 @@ class HUD(object):
         self._notifications.tick(world, clock)
         if not self._show_info:
             return
-        #這裡
         t = world.player.get_transform()
         v = world.player.get_velocity()
         c = world.player.get_control()
@@ -1263,19 +1098,10 @@ class CameraManager(object):
         if not self._parent.type_id.startswith("walker.pedestrian"):
             self._camera_transforms = [
                 (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
-                (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
-                (carla.Transform(carla.Location(x=-2.0*bound_x, y=-0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
                 (carla.Transform(carla.Location(x=-1.0*bound_x, y=+0.0*bound_y, z=1.3*bound_z), carla.Rotation(yaw=180)), Attachment.Rigid),
-                (carla.Transform(carla.Location(x=+0.0*bound_x, y=+0.0*bound_y, z=8.0*bound_z), carla.Rotation(pitch=270.0)),Attachment.Rigid)
-
-
-                #(carla.Transform(carla.Location(x=+0.5*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost)
-                # (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
-                # (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.0*bound_y, z=2.0*bound_z), carla.Rotation(pitch=8.0)), Attachment.SpringArmGhost),
-                # (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*boudexnd_z)), Attachment.Rigid),
-                # (carla.Transform(carla.Location(x=+1.9*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost),
-                # (carla.Transform(carla.Location(x=-2.8*bound_x, y=+0.0*bound_y, z=4.6*bound_z), carla.Rotation(pitch=6.0)), Attachment.SpringArmGhost),
-                # (carla.Transform(carla.Location(x=-1.0, y=-1.0*bound_y, z=0.4*bound_z)), Attachment.Rigid)
+                # (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                # (carla.Transform(carla.Location(x=-2.0*bound_x, y=-0.7*bound_y, z=1.3*bound_z)), Attachment.Rigid),
+                
                 ]
         else:
             self._camera_transforms = [
@@ -1284,8 +1110,6 @@ class CameraManager(object):
                 (carla.Transform(carla.Location(x=2.5, y=0.5, z=0.0), carla.Rotation(pitch=-8.0)), Attachment.SpringArmGhost),
                 (carla.Transform(carla.Location(x=-4.0, z=2.0), carla.Rotation(pitch=6.0)), Attachment.SpringArmGhost),
                 (carla.Transform(carla.Location(x=0, y=-2.5, z=-0.0), carla.Rotation(yaw=90.0)), Attachment.Rigid)]
-
-    
 
         self.transform_index = 1
         self.sensors = [
@@ -1329,8 +1153,8 @@ class CameraManager(object):
             item.append(bp)
         self.index = None
 
-    def toggle_camera(self,toggle_index):
-        self.transform_index = toggle_index
+    def toggle_camera(self):
+        self.transform_index = (self.transform_index + 1) % len(self._camera_transforms)
         self.set_sensor(self.index, notify=False, force_respawn=True)
 
     def set_sensor(self, index, notify=True, force_respawn=False):
@@ -1378,7 +1202,6 @@ class CameraManager(object):
             # Display the image using OpenCV
 
             #cv2.imshow('Camera View', frame)
-            
             cv2.waitKey(1)
 
     @staticmethod
@@ -1422,12 +1245,19 @@ class CameraManager(object):
             array = array[:, :, :3]
             array = array[:, :, ::-1]
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
-        if self.recording and image.frame % 50 == 0:
+        if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
-    '''
-
-    '''
     
+    def show_opencv(self):
+        if self.surface is not None:
+            # Convert Pygame surface to OpenCV format
+            image_data = pygame.surfarray.array3d(self.surface)
+            image_data = np.swapaxes(image_data, 0, 1)
+            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+
+            # Display the image using OpenCV
+            #cv2.imshow('Camera View', image_data)
+            cv2.waitKey(1)
     
 
 
@@ -1445,9 +1275,7 @@ def game_loop(args):
     try:
         client = carla.Client("127.0.0.1", args.port)
         client.set_timeout(2000.0)
-        client.load_world('Town04_Opt')
-        #print(client.get_available_maps())
-        #print(world.get_map())
+
         sim_world = client.get_world()
         if args.sync:
             original_settings = sim_world.get_settings()
@@ -1457,8 +1285,8 @@ def game_loop(args):
                 settings.fixed_delta_seconds = 0.05
             sim_world.apply_settings(settings)
 
-            
-           
+            traffic_manager = client.get_trafficmanager()
+            traffic_manager.set_synchronous_mode(True)
 
         if args.autopilot and not sim_world.get_settings().synchronous_mode:
             print("WARNING: You are currently in asynchronous mode and could "
@@ -1471,41 +1299,9 @@ def game_loop(args):
         pygame.display.flip()
 
         hud = HUD(args.width, args.height)
-        world = World(sim_world, hud, args,client)
+        world = World(sim_world, hud, args)
         controller = KeyboardControl(world, args.autopilot)
 
-        
-        
-        
-        '''if self.player is not None:
-            spawn_point = self.player.get_transform()
-            spawn_point.location.z += 2.0
-            spawn_point.location.x = 360
-            spawn_point.location.y = 18
-            spawn_point.rotation.roll = 0.0
-            spawn_point.rotation.pitch = 0.0
-            self.destroy()
-            self.player = self.world.try_spawn_actor(blueprint, spawn_point)
-            self.show_vehicle_telemetry = False
-            self.modify_vehicle_physics(self.player)
-        while self.player is None:
-            if not self.map.get_spawn_points():
-                print('There are no spawn points available in your map/town.')
-                print('Please add some Vehicle Spawn Point to your UE4 scene.')
-                sys.exit(1)
-
-            spawn_points = self.map.get_spawn_points()
-            #spawn_point = random.choice(spawn_points) if spawn_points else carla.Transorm()
-            spawn_point = carla.Transform(carla.Location(x=360, y=18, z=2), carla.Rotation(pitch=0, yaw=180, roll=0))
-            self.player = self.world.try_spawn_actor(blueprint, spawn_point)
-            self.show_vehicle_telemetry = False
-            self.modify_vehicle_physics(self.player)'''
-
-        # 一些代碼來控制第二台車（例如，使用 Pygame 來處理鍵盤輸入）
-
-        # 運行一段時間然後清理
-        #time.sleep(60)
-        #vehicle_1.destroy()
         if args.sync:
             sim_world.tick()
         else:
@@ -1516,12 +1312,11 @@ def game_loop(args):
             if args.sync:
                 sim_world.tick()
             clock.tick_busy_loop(60)
-            world.show_opencv(world.model,controller,client, clock, args.sync)
+
             # Ensure world.player is not None before creating CameraManager
             if world.player is not None:
                 if not hasattr(world, 'camera_manager'):
                     world.camera_manager = CameraManager(world.player, hud, args.gamma)
-                    world.camera_manager2 = CameraManager(world.player, hud, args.gamma)
             else:
                 raise ValueError("world.player is None. Cannot create CameraManager.")
 
@@ -1529,6 +1324,7 @@ def game_loop(args):
                 return
             world.tick(clock)
             world.render(display)
+            world.camera_manager.show_opencv()
             pygame.display.flip()
 
     finally:
