@@ -212,6 +212,7 @@ class World(object):
         self.imu_sensor = None
         self.radar_sensor = None
         self.camera_manager = None
+        self.camera_manager2 = None
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
         self._actor_filter = args.filter
@@ -296,6 +297,9 @@ class World(object):
         self.camera_manager = CameraManager(self.player, self.hud, self._gamma)
         self.camera_manager.transform_index = cam_pos_index
         self.camera_manager.set_sensor(cam_index, notify=False)
+        self.camera_manager2 = CameraManager(self.player, self.hud, self._gamma)
+        self.camera_manager2.transform_index = cam_pos_index
+        self.camera_manager2.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
 
@@ -353,12 +357,16 @@ class World(object):
         self.camera_manager.sensor.destroy()
         self.camera_manager.sensor = None
         self.camera_manager.index = None
+        self.camera_manager2.sensor.destroy()
+        self.camera_manager2.sensor = None
+        self.camera_manager2.index = None
 
     def destroy(self):
         if self.radar_sensor is not None:
             self.toggle_radar()
         sensors = [
             self.camera_manager.sensor,
+            self.camera_manager2.sensor,
             self.collision_sensor.sensor,
             self.lane_invasion_sensor.sensor,
             self.gnss_sensor.sensor,
@@ -369,7 +377,19 @@ class World(object):
                 sensor.destroy()
         if self.player is not None:
             self.player.destroy()
-
+    def show_opencv(self):
+        if self.camera_manager2.surface is not None:
+            # Convert Pygame surface to OpenCV format
+            image_data = pygame.surfarray.array3d(self.camera_manager2.surface)
+            image_data = np.swapaxes(image_data, 0, 1)
+            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+            # Display the image using OpenCV
+            cv2.imshow('View2', image_data)
+            
+            # Save the image to a file
+            cv2.imwrite('output_image1.jpg', image_data)  # Change 'output_image.jpg' to your desired filename
+            
+            cv2.waitKey(1)
 
 # ==============================================================================
 # -- KeyboardControl -----------------------------------------------------------
@@ -1250,16 +1270,7 @@ class CameraManager(object):
         if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
     
-    def show_opencv(self):
-        if self.surface is not None:
-            # Convert Pygame surface to OpenCV format
-            image_data = pygame.surfarray.array3d(self.surface)
-            image_data = np.swapaxes(image_data, 0, 1)
-            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
-
-            # Display the image using OpenCV
-            #cv2.imshow('Camera View', image_data)
-            cv2.waitKey(1)
+    
     
 
 
@@ -1326,7 +1337,7 @@ def game_loop(args):
                 return
             world.tick(clock)
             world.render(display)
-            world.camera_manager.show_opencv()
+            world.show_opencv()
             pygame.display.flip()
 
     finally:
