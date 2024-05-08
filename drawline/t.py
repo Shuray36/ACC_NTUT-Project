@@ -1,91 +1,35 @@
 import cv2
 import numpy as np
 
-def make_coordinates(image, line_parameters):
-    slope, intercept = line_parameters
-    y1 = image.shape[0]
-    y2 = int(y1 * (3 / 5))  # For example, take y2 to be 3/5th of the image height
+# 讀取圖片
+image = cv2.imread('right.jpg')  # 確保路徑和圖片名稱是正確的
 
-    # Ensure x values are within image width
-    x1 = max(min(int((y1 - intercept) / slope), image.shape[1]), 0)
-    x2 = max(min(int((y2 - intercept) / slope), image.shape[1]), 0)
+# 確認圖片是否成功加載
+if image is None:
+    print("圖片加載失敗，請檢查路徑是否正確")
+else:
+    # 圖片的尺寸
+    height, width = image.shape[:2]
 
-    # Ensure y values are within image height
-    y1 = max(min(y1, image.shape[0]), 0)
-    y2 = max(min(y2, image.shape[0]), 0)
+    # 設定盲點標示區域的參數，這些參數可能需要根據實際情況調整
+    blind_spot_width_ratio = 0.15  # 假設盲點區域佔車寬的15%
+    blind_spot_height_start_ratio = 0.5  # 從車窗一半高度開始
+    blind_spot_height_end_ratio = 0.95  # 到車窗95%的高度結束
 
-    return np.array([x1, y1, x2, y2])
+    # 計算盲點區域的左右邊界
+    left_blind_spot_end = int(width * (0.5 - blind_spot_width_ratio))
+    left_blind_spot_start = int(width * 0.5)
+    right_blind_spot_end = int(width * (0.5 + blind_spot_width_ratio))
+    right_blind_spot_start = int(width * 0.5)
 
-def average_slope_intercept(image, lines):
-    left_fit = []
-    right_fit = []
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        parameters = np.polyfit((x1, x2), (y1, y2), 1)
-        slope = parameters[0]
-        intercept = parameters[1]
-        if slope < 0:
-            left_fit.append((slope, intercept))
-        else:
-            right_fit.append((slope, intercept))
-    left_fit_average = np.nanmean(left_fit, axis=0)  # Calculate mean, ignoring NaN values
-    right_fit_average = np.nanmean(right_fit, axis=0)  # Calculate mean, ignoring NaN values
+    # 計算盲點區域的上下邊界
+    top_blind_spot = int(height * blind_spot_height_start_ratio)
+    bottom_blind_spot = int(height * blind_spot_height_end_ratio)
 
-    if np.isnan(left_fit_average).any() or np.isnan(right_fit_average).any():
-        return None
+    # 畫一條斜線來表示左側的盲點範圍
+    cv2.line(image, (left_blind_spot_start, top_blind_spot), (0, bottom_blind_spot), (0, 255, 0), 2)
 
-    left_line = make_coordinates(image, tuple(left_fit_average))
-    right_line = make_coordinates(image, tuple(right_fit_average))
-    return np.array([left_line, right_line])
-
-
-def canny(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    canny = cv2.Canny(blur, 50, 150)
-    return canny
-
-def display_lines(image, lines):
-    line_image = np.zeros_like(image)
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line.reshape(4)
-            cv2.line(line_image, (x1, y1), (x2, y2), (255, 0, 0), 10)
-    return line_image
-
-def region_of_interest(image):
-    height = image.shape[0]
-    polygons = np.array([
-        [(200, height), (1100, height), (550, 250)]
-    ])
-    mask = np.zeros_like(image)
-    cv2.fillPoly(mask, polygons, 255)
-    masked_image = cv2.bitwise_and(image, mask)
-    return masked_image
-
-# Load image
-image = cv2.imread('b.png')
-lane_image = np.copy(image)
-
-# Detect edges
-canny_image = canny(lane_image)
-
-# Isolate region of interest
-cropped_image = region_of_interest(canny_image)
-
-# Find lines
-lines = cv2.HoughLinesP(cropped_image, 2, np.pi/180, 100, np.array([]), minLineLength=40, maxLineGap=5)
-
-# Average lines
-averaged_lines = average_slope_intercept(lane_image, lines)
-
-# Display lines
-line_image = display_lines(lane_image, averaged_lines)
-
-# Overlay lines on original image
-combo_image = cv2.addWeighted(lane_image, 0.8, line_image, 1, 1)
-
-# Display the result
-cv2.imshow('result', combo_image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+    # 顯示圖像
+    cv2.imshow('Left Blind Spot Areas with Diagonal Line', image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
