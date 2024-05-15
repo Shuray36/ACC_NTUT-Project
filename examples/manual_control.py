@@ -531,45 +531,98 @@ class World(object):
             # Gaussian blur
             blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-            # Canny edge detection
-            edges = cv2.Canny(blur, 0, 75)  # Adjust thresholds as needed
+            # 二值化
+            _, binary = cv2.threshold(blur, 170, 255, cv2.THRESH_BINARY)
 
-            # Binarization
-            _, binary = cv2.threshold(edges, 10, 255, cv2.THRESH_BINARY)
+            # Canny 邊緣檢測
+            edges = cv2.Canny(binary, 0, 75)  # 調整低閾值和高閾值
 
-            # Define dilation kernel
+
+
+            # 定義膨脹核心
             kernel = np.ones((5, 5), np.uint8)
 
-            # Dilation
-            dilated_image = cv2.dilate(binary, kernel, iterations=5)
+            # 膨脹操作
+            dilated_image = cv2.dilate(edges, kernel, iterations=4)
+            eroded_image = cv2.erode(dilated_image, kernel, iterations=4)
 
-            #cv2.imshow('binary', resized_dilated_image)
 
-            # Create a mask for the region of interest
-            height, width = dilated_image.shape
-            mask = np.zeros_like(dilated_image)
-            extend_length = 40
+            # 創建一個感興趣的區域遮罩(mask)，這樣霍夫變換只會在這個區域內檢測線條
+            # 這個遮罩取決於圖片的具體情況，你可能需要手動調節座標
+            mask = np.zeros_like(eroded_image)
+
             polygon = np.array([[
                 (610, 370),
                 (680, 370),
                 (1050, 700),
                 (250, 700),
             ]], np.int32)
+
+            # 填充多邊形
             cv2.fillPoly(mask, polygon, 255)
 
-            # Apply mask to Canny edge detection output
-            masked_edges = cv2.bitwise_and(dilated_image, mask)
-
+            # 將遮罩應用於 Canny 邊緣檢測的輸出
+            masked_edges = cv2.bitwise_and(eroded_image, mask)
             #cv2.imshow('mask', resized_masked_edges)
 
             # Hough transform to detect lines
-            lines = cv2.HoughLinesP(masked_edges, 1, np.pi/180, threshold=230, minLineLength=100, maxLineGap=300)
-
+            lines = cv2.HoughLinesP(masked_edges, 1, np.pi/180, threshold=50, minLineLength=100, maxLineGap=300)
             # Draw lines
-            if lines is not None:
+            similar_lines = {}
+            if lines is not None:  # 確保 lines 不是 NoneType
                 for line in lines:
                     for x1, y1, x2, y2 in line:
-                        cv2.line(image_data, (x1, y1), (x2, y2), (255, 0, 0), 5)
+                        slope = (y2 - y1) / (x2 - x1 + 1e-6)  # 避免除以零
+                        found_group = False
+                        for avg_slope, group in similar_lines.items():
+                            if abs(slope - avg_slope) < 0.2:  # 調整此閾值以確定何時將線段分組
+                                group.append((x1, y1, x2, y2))
+                                found_group = True
+                                break
+                        if not found_group:
+                            similar_lines[slope] = [(x1, y1, x2, y2)]
+                longest_lines=[]
+                # 計算每個分組的平均斜率
+                for slope, lines in similar_lines.items():
+                    avg_slope = np.mean([(lines[i][3] - lines[i][1]) / (lines[i][2] - lines[i][0] + 1e-6) for i in range(len(lines))])
+                    # 找出最長的一條線段
+                    longest_line = max(lines, key=lambda line: np.linalg.norm((line[0]-line[2], line[1]-line[3])))
+                    similar_lines[slope] = [longest_line]
+                    longest_lines.append(longest_line)
+
+                # 將最長線段添加到新的陣列中
+                longest_lines_array = np.array(longest_lines)
+
+                # 繪製線條
+                for x1, y1, x2, y2 in longest_lines_array:
+                    cv2.line(image_data, (x1, y1), (x2, y2), (255, 0, 0), 5)
+                center_x = sum([(x1 + x2) // 2 for x1, _, x2, _ in longest_lines]) // len(longest_lines)
+                center_y = sum([(y1 + y2) // 2 for _, y1, _, y2 in longest_lines]) // len(longest_lines)
+
+                # 計算中心點與參考點的差距
+                # 计算中心点与参考点的差距
+                reference_x = 641
+                reference_y = 453
+                distances = [np.sqrt((center_x - reference_x)**2 + (center_y - reference_y)**2)]
+
+                # 设置阈值，过滤掉与参照值差距太大的中心点
+                threshold = 50  # 可以调整阈值
+
+                # 检查是否有超过阈值的距离
+                if distances[0] > threshold:
+                    print("Distance exceeds threshold. Filtering out the center point.")
+                else:
+                    print("Distance does not exceed threshold. Updating reference point.")
+                    reference_x = center_x
+                    reference_y = center_y
+                cv2.circle(image_data, (reference_x, reference_y), 5, (0, 255, 0), -1)
+
+            #if(t.location.y < 9.2):
+                #controller._a_pressed = True
+            #else:
+                #controller._a_pressed = False
+
+
 
             '''
             # Mark the position of a blue dot (example positions provided)
@@ -579,8 +632,7 @@ class World(object):
             cv2.circle(image_data, blue_dot_position, radius, blue_color, -1)  # Fill the circle
             '''
 
-            resized_image = cv2.resize(image_data,(1921, 1073))
-            cv2.imshow('Lane Lines', resized_image)
+            cv2.imshow('Lane Lines', image_data)
             cv2.waitKey(1)  # 1 millisecond
 
             
@@ -598,6 +650,9 @@ class KeyboardControl(object):
         self._ackermann_reverse = 0.5
         self._w_pressed = True
         self._s_pressed = False
+        self._a_pressed = False
+        self._d_pressed = False
+
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
             self._ackermann_control = carla.VehicleAckermannControl()
@@ -854,12 +909,12 @@ class KeyboardControl(object):
                 self._control.brake = 0
 
         steer_increment = 5e-4 * milliseconds
-        if keys[K_LEFT] or keys[K_a]:
+        if keys[K_LEFT] or keys[K_a] or self._a_pressed:
             if self._steer_cache > 0:
                 self._steer_cache = 0
             else:
                 self._steer_cache -= steer_increment
-        elif keys[K_RIGHT] or keys[K_d]:
+        elif keys[K_RIGHT] or keys[K_d] or self._d_pressed:
             if self._steer_cache < 0:
                 self._steer_cache = 0
             else:
