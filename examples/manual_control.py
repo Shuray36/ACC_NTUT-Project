@@ -213,6 +213,8 @@ class World(object):
         self.radar_sensor = None
         self.camera_manager = None
         self.camera_manager2 = None
+        self.camera_manager_left = None
+        self.camera_manager_right = None
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
         self._actor_filter = args.filter
@@ -300,6 +302,15 @@ class World(object):
         self.camera_manager2 = CameraManager(self.player, self.hud, self._gamma)
         self.camera_manager2.transform_index = cam_pos_index
         self.camera_manager2.set_sensor(cam_index, notify=False)
+        self.camera_manager_left = CameraManager(self.player, self.hud, self._gamma)
+        self.camera_manager_left.transform_index = cam_pos_index
+        self.camera_manager_left.set_sensor(cam_index, notify=False)
+        self.camera_manager_left.toggle_camera()
+        self.camera_manager_left.toggle_camera()
+        self.camera_manager_right = CameraManager(self.player, self.hud, self._gamma)
+        self.camera_manager_right.transform_index = cam_pos_index
+        self.camera_manager_right.set_sensor(cam_index, notify=False)
+        self.camera_manager_right.toggle_camera()
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
 
@@ -360,6 +371,12 @@ class World(object):
         self.camera_manager2.sensor.destroy()
         self.camera_manager2.sensor = None
         self.camera_manager2.index = None
+        self.camera_manager_left.sensor.destroy()
+        self.camera_manager_left.sensor = None
+        self.camera_manager_left.index = None
+        self.camera_manager_right.sensor.destroy()
+        self.camera_manager_right.sensor = None
+        self.camera_manager_right.index = None
 
     def destroy(self):
         if self.radar_sensor is not None:
@@ -367,6 +384,8 @@ class World(object):
         sensors = [
             self.camera_manager.sensor,
             self.camera_manager2.sensor,
+            self.camera_manager_left.sensor,
+            self.camera_manager_right.sensor,
             self.collision_sensor.sensor,
             self.lane_invasion_sensor.sensor,
             self.gnss_sensor.sensor,
@@ -385,11 +404,47 @@ class World(object):
             image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
             # Display the image using OpenCV
             cv2.imshow('View2', image_data)
-            
-            # Save the image to a file
-            cv2.imwrite('output_image1.jpg', image_data)  # Change 'output_image.jpg' to your desired filename
-            
-            cv2.waitKey(1)
+        if self.camera_manager_right.surface is not None:
+            # 將 Pygame surface 轉換成 OpenCV 格式
+            image_data = pygame.surfarray.array3d(self.camera_manager_right.surface)
+            image_data = np.swapaxes(image_data, 0, 1)
+            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+            # 獲取圖片尺寸
+            height, width = image_data.shape[:2]
+            # 創建一個同樣大小的透明圖層
+            overlay = np.zeros((height, width, 4), dtype=np.uint8)
+            # 定義右側後視鏡盲點多邊形的頂點
+            points = np.array([[width, height], [width - int(width * 0.15) - 400, int(height * 0.5)], [0, int(height * 0.5) + 100]])
+            # 在透明圖層上畫填充的多邊形
+            cv2.fillPoly(overlay, [points], (0, 0, 255, 127))  # 紅色, 127 是 alpha 透明度
+            # 將透明圖層疊加到原始圖像上
+            alpha = overlay[:, :, 3] / 255.0
+            for c in range(0, 3):
+                image_data[:, :, c] = (1 - alpha) * image_data[:, :, c] + alpha * overlay[:, :, c]
+            # 使用 OpenCV 顯示圖像
+            cv2.imshow('build_right', image_data)
+        if self.camera_manager_left.surface is not None:
+            # 將 Pygame surface 轉換成 OpenCV 格式
+            image_data = pygame.surfarray.array3d(self.camera_manager_left.surface)
+            image_data = np.swapaxes(image_data, 0, 1)
+            image_data = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)
+            # 獲取圖片尺寸
+            height, width = image_data.shape[:2]
+            # 創建一個同樣大小的透明圖層
+            overlay = np.zeros((height, width, 4), dtype=np.uint8)
+            # 定義左側後視鏡盲點多邊形的頂點，調整成您指定的新形狀
+            points = np.array([[0, height], [int(width * 0.15) + 400, int(height * 0.5)], [width, int(height * 0.5) + 100]])
+            # 在透明圖層上畫填充的多邊形
+            cv2.fillPoly(overlay, [points], (0, 0, 255, 127))  # 紅色, 127 是 alpha 透明度
+            # 將透明圖層疊加到原始圖像上
+            alpha = overlay[:, :, 3] / 255.0
+            for c in range(0, 3):
+                image_data[:, :, c] = (1 - alpha) * image_data[:, :, c] + alpha * overlay[:, :, c]
+            # 使用 OpenCV 顯示圖像
+            cv2.imshow('build_left', image_data)
+        cv2.waitKey(1)
+
+
 
 # ==============================================================================
 # -- KeyboardControl -----------------------------------------------------------
